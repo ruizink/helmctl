@@ -25,7 +25,7 @@ function print_help() {
     printf '\t%s\n' "-V, --app-version string   (optional) the version description of the deployment"
     printf '\t%s\n' "-t, --timeout int          (optional) timeout in seconds (default: 300)"
     printf '\t%s\n' "--dry-run                  (optional) do not apply changes, show only the diff"
-    printf '\t%s\n' "--debug                    (optional) enable debug messges"
+    printf '\t%s\n' "--debug                    (optional) enable debug messages"
 	printf '\t%s\n' "-h, --help                 prints help"
 }
 
