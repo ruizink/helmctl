@@ -30,7 +30,7 @@ RUN sh helmctl.sh
 
 # Set envvar needed for helm
 ENV XDG_DATA_HOME=/root/.local/share
+ENV KUBECONFIG=/root/kubeconfig
 
 WORKDIR /workspace
-ENV HOME /workspace
 ENTRYPOINT [ "helmctl" ]
