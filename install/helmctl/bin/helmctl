@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+
+# defaults
+CHART_NAME="helmctl"
+TIMEOUT=300
+DEBUG=false
+
+# config
+WORKDIR="$(mktemp -d)/${CHART_NAME}"
+HELMCTL_CHARTS_LOCATION=${HELMCTL_CHARTS_LOCATION:-/root}
+CHART_LOCATION="${HELMCTL_CHARTS_LOCATION}/helmctl"
+
+function info() { echo "INFO: $@"; }
+function error() { echo >&2 "ERROR: $@"; }
+function debug() { [[ "${_arg_debug}" = true ]] && echo "DEBUG: $@"; }
+function run() { debug "=> $@"; "$@"; }
+function runtime_error() { error "$@"; exit 2; }
+
+function print_help() {
+    printf 'Usage: %s <action> -n|--namespace <arg> -f|--filename <arg> -N|--app-name <arg> [-V|--app-version <arg>] [-t|--timeout <arg>] [-d|--debug <arg>] [-h|--help]\n' "$0"
+    printf '\t%s\n' "<action>                   action to perform (options: 'apply')"
+    printf '\t%s\n' "-n, --namespace string     namespace scope for this action"
+    printf '\t%s\n' "-f, --filename string      path of the base k8s filename file for this action"
+    printf '\t%s\n' "-N, --app-name string      the name of the deployment"
+    printf '\t%s\n' "-V, --app-version string   (optional) the version description of the deployment"
+    printf '\t%s\n' "-t, --timeout int          (optional) timeout in seconds (default: 300)"
+    printf '\t%s\n' "--dry-run                  (optional) do not apply changes, show only the diff"
+    printf '\t%s\n' "--debug                    (optional) enable debug messges"
+	printf '\t%s\n' "-h, --help                 prints help"
+}
+
+function usage_error() { error "$@"; print_help; exit 1; }
+
+function validate_arguments() {
+    # validate _arg_action
+    [ -z "$_arg_action" ] && usage_error "Missing required argument action"
+
+    # validate _arg_namespace
+    [ -z "$_arg_namespace" ] && usage_error "Missing required argument -n|--namespace"
+
+    # validate _arg_appname
+    [ -z "$_arg_appname" ] && usage_error "Missing required argument -N|--app-name"
+
+    if [[ "$_arg_action" =~ ^(apply)$ ]]; then
+        [ -z "$_arg_filename" ] && usage_error "Missing required argument -f|--filename for action '$_arg_action'"
+    fi
+
+    # set defaults
+    _arg_dryrun=${_arg_dryrun:-false}
+    _arg_debug=${_arg_debug:-$DEBUG}
+    _arg_timeout=${_arg_timeout:-$TIMEOUT}
+}
+
+function parse_arguments() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            apply )
+                _arg_action=$1
+                shift
+                ;;
+            -n|--namespace )
+                _arg_namespace=$2
+                shift 2
+                ;;
+            -f|--filename )
+                _arg_filename=$2
+                shift 2
+                ;;
+            -N|--app-name )
+                _arg_appname=$2
+                shift 2
+                ;;
+            -V|--app-version )
+                _arg_appversion=$2
+                shift 2
+                ;;
+            -t|--timeout )
+				_arg_timeout=$2
+				shift 2
+                ;;
+            --dry-run )
+				_arg_dryrun=true
+				shift
+                ;;
+            --debug )
+				_arg_debug=true
+				shift
+                ;;
+            -h|--help )
+				print_help
+				exit 0
+                ;;
+            -*|--*=|* ) # unsupported flags
+                usage_error "Unsupported argument '$1'"
+                ;;
+        esac
+    done
+    validate_arguments
+}
+
+function update_chart_appversion() {
+    if [ ! -z "${_arg_appversion}" ]; then
+        sed -i "s/^appVersion:.*/appVersion: ${_arg_appversion}/" "${WORKDIR}/Chart.yaml"
+    fi
+}
+
+function create_helm_chart() {
+    # Check if base k8s manifest is readable
+    if [ ! -r ${_arg_filename} ]; then
+        runtime_error "Cannot read file '${_arg_filename}'"
+    fi
+
+    # Create a new chart from scaffold
+    cp -r "${CHART_LOCATION}" "${WORKDIR}"
+    
+    # Copy base k8s manifest
+    cat "${_arg_filename}" > "${WORKDIR}/templates/manifest.yaml"
+
+    # Change the appVersion in the chart (if provided)
+    update_chart_appversion "${_arg_appversion}"
+}
+
+function install() {
+    pushd "${WORKDIR}" > /dev/null
+    info "Running install command..."
+    run helm upgrade --install -n "${_arg_namespace}" "${_arg_appname}" . --atomic --timeout ${_arg_timeout}s
+    popd > /dev/null
+}
+
+function diff() {
+    pushd "${WORKDIR}" > /dev/null
+    info "Running diff command..."
+    run helm diff upgrade -n "${_arg_namespace}" "${_arg_appname}" . --allow-unreleased
+    popd > /dev/null
+}
+
+function do_action_apply() {
+    if [ "${_arg_dryrun}" = true ]; then
+        diff
+    else
+        diff
+        install
+    fi
+}
+
+#####################################################################################
+
+parse_arguments "$@"
+
+debug "Working dir: ${WORKDIR}"
+
+create_helm_chart
+
+case "$_arg_action" in
+    apply )
+        create_helm_chart
+        do_action_apply
+        ;;
+esac
