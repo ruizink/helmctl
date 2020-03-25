@@ -123,14 +123,14 @@ function create_helm_chart() {
 function install() {
     pushd "${WORKDIR}" > /dev/null
     info "Running install command..."
-    run helm upgrade --install -n "${_arg_namespace}" "${_arg_appname}" . --atomic --timeout ${_arg_timeout}s
+    run helm upgrade --install -n "${_arg_namespace}" "${_arg_appname}" . --atomic --timeout ${_arg_timeout}s || return $?
     popd > /dev/null
 }
 
 function diff() {
     pushd "${WORKDIR}" > /dev/null
     info "Running diff command..."
-    run helm diff upgrade -n "${_arg_namespace}" "${_arg_appname}" . --allow-unreleased
+    run helm diff upgrade -n "${_arg_namespace}" "${_arg_appname}" . --allow-unreleased || return $?
     popd > /dev/null
 }
 
@@ -138,8 +138,7 @@ function do_action_apply() {
     if [ "${_arg_dryrun}" = true ]; then
         diff
     else
-        diff
-        install
+        diff && install
     fi
 }
 
